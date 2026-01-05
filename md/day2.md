@@ -27,7 +27,7 @@ Save the above in `requirements.txt` and include this in the GitHub repo of your
 ##### Streamlit in Snowflake
 
 Click on the packages drop-down and enter the libraries name as shown:
-![](../assets/sis_install_prerequisite_libraries.png)
+![](https://github.com/streamlit/30DaysOfAI/blob/main/assets/sis_install_prerequisite_libraries.png?raw=true)
 
 #### 1. Import Libraries & Connect
 
