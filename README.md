@@ -25,7 +25,7 @@ Master AI app development from chatbots to production-ready RAG systems and inte
 ### Prerequisites
 
 - Python 3.11, 3.12
-- [Snowflake free trial](https://signup.snowflake.com/) (120 days of credits)
+- [Snowflake free trial](https://signup.snowflake.com/?trial=student&cloud=aws&region=us-west-2&utm_source=streamlit-campaign&utm_campaign=30daysofai) (120 days of credits)
 - Basic Python knowledge
 - Enthusiasm for AI! 🧠
 
