@@ -24,7 +24,7 @@ Master AI app development from chatbots to production-ready RAG systems and inte
 
 ### Prerequisites
 
-- Python 3.11, 3.12
+- Python 3.11, 3.12 (3.13 will work if `llvmlite`, `numba` are installed)
 - [Snowflake free trial](https://signup.snowflake.com/) (120 days of credits)
 - Basic Python knowledge
 - Enthusiasm for AI! 🧠
