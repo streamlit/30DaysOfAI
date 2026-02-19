@@ -1,4 +1,4 @@
-# 30 Days Of AI with Streamlit 🎈
+# 30 Days Of AI with Streamlit 🎈     
 
 Welcome to **#30DaysOfAI** — a comprehensive 30-day challenge to learn, build, and deploy AI-powered applications using [Streamlit](https://streamlit.io) and [Snowflake Cortex AI](https://docs.snowflake.com/en/user-guide/snowflake-cortex/overview).
 
@@ -24,7 +24,7 @@ Master AI app development from chatbots to production-ready RAG systems and inte
 
 ### Prerequisites
 
-- Python 3.11, 3.12
+- Python 3.11, 3.12 (3.13 will work if `llvmlite`, `numba` are installed)
 - [Snowflake free trial](https://signup.snowflake.com/?trial=student&cloud=aws&region=us-west-2&utm_source=streamlit-campaign&utm_campaign=30daysofai) (120 days of credits)
 - Basic Python knowledge
 - Enthusiasm for AI! 🧠

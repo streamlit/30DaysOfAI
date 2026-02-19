@@ -1,4 +1,4 @@
-For today's challenge, our goal is to run a Snowflake Cortex LLM using the `snowflake.cortex.Complete` Python API. We need to build a Streamlit app that lets a user select a model, enter a prompt, and then stream the response back. Once that's done, we will display the AI's response in real-time, word by word, as it's being generated.
+For today's challenge, our goal is to call a Snowflake Cortex LLM using the OpenAI-compatible REST API. We'll build a Streamlit app that lets a user select a model, enter a prompt, and then stream the response back in real-time.
 
 ---
 
@@ -6,29 +6,22 @@ For today's challenge, our goal is to run a Snowflake Cortex LLM using the `snow
 
 Let's break down what each part of the code does.
 
-#### 1. Imports and Session
+#### 1. Imports and Client Setup
 
 ```python
 import streamlit as st
-from snowflake.cortex import Complete
-import time
+from openai import OpenAI
 
-# Connect to Snowflake
-try:
-    # Works in Streamlit in Snowflake
-    from snowflake.snowpark.context import get_active_session
-    session = get_active_session()
-except:
-    # Works locally and on Streamlit Community Cloud
-    from snowflake.snowpark import Session
-    session = Session.builder.configs(st.secrets["connections"]["snowflake"]).create()
+conn = st.secrets["connections"]["snowflake"]
+host = conn.get("host") or f"{conn['account']}.snowflakecomputing.com"
+client = OpenAI(api_key=conn["password"], base_url=f"https://{host}/api/v2/cortex/v1")
 ```
 
 * **`import streamlit as st`**: Imports the library needed to build the web app's user interface (UI).
-* **`from snowflake.cortex import Complete`**: This is the key import. Instead of using the SQL function `ai_complete`, we are importing the direct Python `Complete` class from the Cortex SDK, which is designed for this kind of programmatic use.
-* **`import time`**: Added for the custom generator method, which uses a small delay to smooth out streaming.
-* **`try/except` block**: Automatically detects the environment and connects appropriately (SiS vs local/Community Cloud)
-* **`session`**: The established Snowflake connection
+* **`from openai import OpenAI`**: Imports the OpenAI client library, which works with Snowflake Cortex's OpenAI-compatible endpoint.
+* **`conn = st.secrets[...]`**: Loads Snowflake connection details from the secrets file.
+* **`host`**: Constructs the Snowflake host URL from either a direct host or account name.
+* **`client`**: Creates an OpenAI client configured to use Snowflake Cortex as the backend, authenticating with a PAT token.
 
 #### 2. Configure the User Interface
 
@@ -39,71 +32,55 @@ model = st.selectbox("Select a model", llm_models)
 example_prompt = "What is Python?"
 prompt = st.text_area("Enter prompt", example_prompt)
 
-# Choose streaming method
 streaming_method = st.radio(
     "Streaming Method:",
-    ["Direct (stream=True)", "Custom Generator"],
+    ["Direct", "Real Streaming"],
     help="Choose how to stream the response"
 )
 ```
 
 * **`llm_models = [...]`**: Defines a Python list of the model names the user can choose from.
 * **`model = st.selectbox(...)`**: Creates a drop-down menu in the UI with the label "Select a model". The user's choice is stored in the `model` variable.
-* **`prompt = st.text_area(...)`**: Creates a multi-line text box for the user's prompt, and pre-populates it with the `example_prompt`. The user's final input is stored in the `prompt` variable.
-* **`streaming_method = st.radio(...)`**: NEW - Adds a radio button to let users choose between the two streaming methods, so they can see the difference in behavior.
+* **`prompt = st.text_area(...)`**: Creates a multi-line text box for the user's prompt, and pre-populates it with the `example_prompt`.
+* **`streaming_method = st.radio(...)`**: Adds a radio button to let users choose between direct (non-streaming) and real streaming responses.
 
-#### 3. Stream the LLM Response
-
-This app demonstrates **two methods** for streaming responses:
-
-**Method 1: Direct Streaming (stream=True)**
+#### 3. Generate and Stream the LLM Response
 
 ```python
 if st.button("Generate Response"):
-    with st.spinner(f"Generating response with `{model}`"):
-        stream_generator = Complete(
-                    session=session,
-                    model=model,
-                    prompt=prompt,
-                    stream=True,  # Built-in streaming
-                )
-            
-        st.write_stream(stream_generator)
+    messages = [{"role": "user", "content": prompt}]
+    
+    if streaming_method == "Direct":
+        with st.spinner(f"Generating response with `{model}`"):
+            response = client.chat.completions.create(model=model, messages=messages, stream=False)
+            st.write(response.choices[0].message.content)
+    else:
+        with st.spinner(f"Generating response with `{model}`"):
+            stream = client.chat.completions.create(model=model, messages=messages, stream=True)
+        st.write_stream(stream)
 ```
 
-* **`stream=True`**: The simplest approach. Tells `Complete` to return a generator that yields tokens as they arrive.
-* **Works when**: The API's streaming is directly compatible with `st.write_stream()`.
-
-**Method 2: Custom Generator (Compatibility Mode)**
-
-```python
-def custom_stream_generator():
-    """
-    Alternative streaming method for cases where
-    the generator is not compatible with st.write_stream
-    """
-    output = Complete(
-        session=session,
-        model=model,
-        prompt=prompt  # No stream parameter
-    )
-    for chunk in output:
-        yield chunk
-        time.sleep(0.01)  # Small delay for smooth streaming
-
-with st.spinner(f"Generating response with `{model}`"):
-    st.write_stream(custom_stream_generator)
-```
-
-* **When to use**: If `stream=True` doesn't work with `st.write_stream()` (e.g., compatibility issues with conversation history or certain API responses).
-* **How it works**: Creates a Python generator function that manually yields chunks with a small delay for smooth visual streaming.
-* **Docstring**: Documents why this alternative method exists—for compatibility when the direct method doesn't work.
-* **Best practice**: This is the more reliable method for chatbots and complex prompts (as we'll see in later days).
+* **`messages`**: Formats the user prompt as a chat message in the OpenAI format.
+* **Direct method**: Calls the API with `stream=False`, waits for the complete response, then displays it all at once.
+* **Real Streaming method**: Calls the API with `stream=True`, which returns a generator that yields chunks as they're generated. `st.write_stream()` displays these chunks in real-time.
 
 > :material/lightbulb: **Why streaming matters:** Without streaming, users stare at a blank screen for several seconds while the LLM generates the full response. With streaming, they see words appearing immediately, making the app feel faster and more responsive even though the total time is the same.
 
 ---
 
+### :material/key: Secrets Configuration
+
+Your `secrets.toml` file needs to include a PAT (Programmatic Access Token) for authentication:
+
+```toml
+[connections.snowflake]
+account = "your_account"
+password = "your_pat_token"
+```
+
+---
+
 ### :material/library_books: Resources
-- [Cortex Complete Python API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions#complete)
+- [Snowflake Cortex REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-llm-rest-api)
 - [st.write_stream Documentation](https://docs.streamlit.io/develop/api-reference/write-magic/st.write_stream)
+- [OpenAI Python Client](https://github.com/openai/openai-python)
