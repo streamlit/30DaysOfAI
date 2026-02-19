@@ -21,10 +21,12 @@ if 'run_counter' not in st.session_state:
 
 # Check TruLens installation
 try:
+    from trulens.core.otel.instrument import instrument
+    from trulens.otel.semconv.trace import SpanAttributes
+    from trulens.apps.app import TruApp
     from trulens.connectors.snowflake import SnowflakeConnector
     from trulens.core.run import Run, RunConfig
-    from trulens.core import TruSession
-    from trulens.core.otel.instrument import instrument
+
     import pandas as pd
     import time
     trulens_available = True
@@ -226,26 +228,33 @@ if run_evaluation:
                     self.num_results = num_results
                     self.model = rag_model
                 
-                @instrument()
-                def retrieve_context(self, query: str) -> str:
+                @instrument(
+                    span_type=SpanAttributes.SpanType.RETRIEVAL,
+                    attributes={
+                        SpanAttributes.RETRIEVAL.QUERY_TEXT: "query",
+                        SpanAttributes.RETRIEVAL.RETRIEVED_CONTEXTS: "return",
+                    }
+                )
+                def retrieve_context(self, query: str) -> list:  # Return LIST, not str
                     """Retrieve context from Cortex Search."""
                     root = Root(self.session)
                     parts = self.search_service.split(".")
                     svc = root.databases[parts[0]].schemas[parts[1]].cortex_search_services[parts[2]]
                     results = svc.search(query=query, columns=["CHUNK_TEXT"], limit=self.num_results)
-                    context = "\n\n".join([r["CHUNK_TEXT"] for r in results.results])
-                    return context
+                    # Return as LIST of strings
+                    return [r["CHUNK_TEXT"] for r in results.results]
                 
-                @instrument()
-                def generate_completion(self, query: str, context: str) -> str:
+                @instrument(span_type=SpanAttributes.SpanType.GENERATION)
+                def generate_completion(self, query: str, context: list) -> str:
                     """Generate answer using LLM."""
+                    context_str = "\n\n".join(context)  # Join here instead
                     prompt = f"""Based on this context from customer reviews:
-
-{context}
-
-Question: {query}
-
-Provide a helpful answer based on the context above:"""
+            
+            {context_str}
+            
+            Question: {query}
+            
+            Provide a helpful answer based on the context above:"""
                     
                     prompt_escaped = prompt.replace("'", "''")
                     response = self.session.sql(
@@ -253,10 +262,16 @@ Provide a helpful answer based on the context above:"""
                     ).collect()[0][0]
                     return response.strip()
                 
-                @instrument()
+                @instrument(
+                    span_type=SpanAttributes.SpanType.RECORD_ROOT,
+                    attributes={
+                        SpanAttributes.RECORD_ROOT.INPUT: "query",
+                        SpanAttributes.RECORD_ROOT.OUTPUT: "return",
+                    }
+                )
                 def query(self, query: str) -> str:
                     """Main RAG query method."""
-                    context = self.retrieve_context(query)
+                    context = self.retrieve_context(query)  # Now returns list
                     answer = self.generate_completion(query, context)
                     return answer
             
@@ -279,10 +294,11 @@ Provide a helpful answer based on the context above:"""
             # Register the RAG app with unique version for each run
             unique_app_version = f"{app_version}_{st.session_state.run_counter}"
             
-            tru_rag = tru_session.App(
-                rag_app,
+            tru_rag = TruApp(
+                app=rag_app,
                 app_name=app_name,
                 app_version=unique_app_version,
+                connector=tru_connector,
                 main_method=rag_app.query
             )
             
@@ -305,17 +321,6 @@ Provide a helpful answer based on the context above:"""
             
             # Start the run - this executes all queries in batch
             run.start()
-            
-            # Show progress for each question and generate answers
-            generated_answers = {}
-            for idx, question in enumerate(test_questions, 1):
-                st.write(f"  :orange[:material/check:] Question {idx}/{len(test_questions)}: {question[:60]}{'...' if len(question) > 60 else ''}")
-                # Generate answer for this question
-                try:
-                    answer = rag_app.query(question)
-                    generated_answers[question] = answer
-                except Exception as e:
-                    generated_answers[question] = f"Error: {str(e)}"
             
             st.write(":orange[:material/check:] Waiting for all invocations to complete...")
             
@@ -367,14 +372,6 @@ Provide a helpful answer based on the context above:"""
 Navigate to: **AI & ML → Evaluations → {app_name}**
             """)
             
-            # Show generated answers
-            with st.expander("Generated Answers", expanded=True):
-                for idx, question in enumerate(test_questions, 1):
-                    st.markdown(f"**Question {idx}:** {question}")
-                    st.info(generated_answers.get(question, "No answer generated"))
-                    if idx < len(test_questions):
-                        st.markdown("---")
-        
     except Exception as e:
         st.error(f"Error during evaluation: {str(e)}")
         
@@ -398,3 +395,4 @@ pandas>=1.5.0""", language="txt")
 # Footer
 st.divider()
 st.caption("Day 23: LLM Evaluation & AI Observability | 30 Days of AI with Streamlit")
+
